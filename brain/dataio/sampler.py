@@ -19,10 +19,10 @@ class ReproducibleRandomSampler(RandomSampler):
         self.seed = int(seed)
         self.epoch = epoch
         self.generator = torch.Generator()
-    
+
     def set_epoch(self, epoch):
         self.epoch = epoch
-    
+
     def __iter__(self):
         self.generator.manual_seed(self.seed + self.epoch)
         return super().__iter__()
@@ -32,7 +32,7 @@ class DistributedSamplerWrapper(DistributedSampler):
     def __init__(self, sampler, *args, **kwargs):
         super().__init__(dataset=sampler, *args, **kwargs)
         self.sampler = sampler
-    
+
     def __iter__(self):
         # It is easiest to use a random access interface to the wrapped
         # sampler's indices, so we just fetch all indices from the wrappered

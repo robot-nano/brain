@@ -141,4 +141,3 @@ def get_environment_description():
     result += "==============================\n"
     result += cuda_str
     return result
-

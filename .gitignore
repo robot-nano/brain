@@ -1,6 +1,7 @@
 __pycache__/
 .idea/
 .vscode/
+recipes/tmp/
 
 # Mac OS
 .DS_Store

@@ -84,8 +84,10 @@ DEFAULT_TRANSFER_HOOKS = {
 try:
     import sentencepiece as spm
 
+
     def _load_spm(obj, path, device=None):
         obj.load(str(path))  # SentencePieceProcessor needs a string.
+
 
     DEFAULT_TRANSFER_HOOKS[spm.SentencePieceProcessor] = _load_spm
     del spm
