@@ -1,0 +1,6 @@
+__pycache__/
+.idea/
+.vscode/
+
+# Mac OS
+.DS_Store
