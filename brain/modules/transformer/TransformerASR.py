@@ -135,6 +135,65 @@ class TransformerASR(TransformerInterface):
         tgt_mask = get_lookahead_mask(tgt)
         return src_key_padding_mask, tgt_key_padding_mask, src_mask, tgt_mask
 
+    @torch.jit.export
+    @torch.no_grad()
+    def decode(self, tgt, encoder_out, enc_len=None):
+        tgt_mask = get_lookahead_mask(tgt)
+        src_key_padding_mask = None
+        if enc_len is not None:
+            src_key_padding_mask = (1 - length_to_mask(enc_len)).bool()
+
+        tgt = self.custom_tgt_module(tgt)
+        if self.attention_type == "RelPosMHAXL":
+            # use standard sinusoidal pos encoding in decoder
+            tgt = tgt + self.positional_encoding_decoder(tgt)
+            pos_embs_encoder = None
+            pos_embs_target = None
+        elif self.positional_encoding_type == "fixed_abs_sine":
+            tgt = tgt + self.positional_encoding(tgt)
+            pos_embs_target = None
+            pos_embs_encoder = None
+
+        predictions, self_attns, multihead_attns = self.decoder(
+            tgt,
+            encoder_out,
+            tgt_mask=tgt_mask,
+            memory_key_padding_mask=src_key_padding_mask,
+            pos_embs_tgt=pos_embs_target,
+            pos_embs_src=pos_embs_encoder,
+        )
+        return predictions, multihead_attns[-1]
+
+    @torch.jit.export
+    def encode(self, src, wav_len=None):
+        # reshape the src vector to [Batch, Time, Fea] if a 4d vector is given
+        if src.dim() == 4:
+            bz, t, ch1, ch2 = src.shape
+            src = src.reshape(bz, t, ch1 * ch2)
+
+        src_key_padding_mask = None
+        if wav_len is not None:
+            abs_len = torch.floor(wav_len * src.shape[1])
+            src_key_padding_mask = (
+                torch.arange(src.shape[1])[None, :].to(abs_len)
+                > abs_len[:, None]
+            )
+
+        src = self.custom_src_module(src)
+        if self.attention_type == "RelPosMHAXL":
+            pos_embs_source = self.positional_encoding(src)
+
+        elif self.positional_encoding_type == "fixed_abs_sine":
+            src = src + self.positional_encoding(src)
+            pos_embs_source = None
+
+        encoder_out, _ = self.encoder(
+            src=src,
+            src_key_padding_mask=src_key_padding_mask,
+            pos_embs=pos_embs_source,
+        )
+        return encoder_out
+
     def _init_params(self):
         for p in self.parameters():
             if p.dim() > 1:
