@@ -20,6 +20,47 @@ EDIT_SYMBOLS = {
 # here the default is not actually ever mutated,
 # and simply serves as an empty Counter.
 def accumulatable_wer_stats(refs, hyps, stats=collections.Counter()):
+    """Computes word error rate and the related counts for a batch.
+
+    Can also be used to accumulate the counts over many batches, by passing
+    the output back to the function in the call for the next batch.
+
+    Arguments
+    ----------
+    ref : iterable
+        Batch of reference sequences.
+    hyp : iterable
+        Batch of hypothesis sequences.
+    stats : collections.Counter
+        The running statistics.
+        Pass the output of this function back as this parameter
+        to accumulate the counts. It may be cleanest to initialize
+        the stats yourself; then an empty collections.Counter() should
+        be used.
+
+    Returns
+    -------
+    collections.Counter
+        The updated running statistics, with keys:
+
+        * "WER" - word error rate
+        * "insertions" - number of insertions
+        * "deletions" - number of deletions
+        * "substitutions" - number of substitutions
+        * "num_ref_tokens" - number of reference tokens
+
+    Example
+    -------
+    >>> import collections
+    >>> batches = [[[[1,2,3],[4,5,6]], [[1,2,4],[5,6]]],
+    ...             [[[7,8], [9]],     [[7,8],  [10]]]]
+    >>> stats = collections.Counter()
+    >>> for batch in batches:
+    ...     refs, hyps = batch
+    ...     stats = accumulatable_wer_stats(refs, hyps, stats)
+    >>> print("%WER {WER:.2f}, {num_ref_tokens} ref tokens".format(**stats))
+    %WER 33.33, 9 ref tokens
+    """
     updated_stats = stats + _batch_stats(refs, hyps)
     if updated_stats["num_ref_tokens"] == 0:
         updated_stats["WER"] = float("nan")
@@ -38,6 +79,35 @@ def accumulatable_wer_stats(refs, hyps, stats=collections.Counter()):
 
 
 def _batch_stats(refs, hyps):
+    """Internal function which actually computes the counts.
+
+    Used by accumulatable_wer_stats
+
+    Arguments
+    ----------
+    ref : iterable
+        Batch of reference sequences.
+    hyp : iterable
+        Batch of hypothesis sequences.
+
+    Returns
+    -------
+    collections.Counter
+        Edit statistics over the batch, with keys:
+
+        * "insertions" - number of insertions
+        * "deletions" - number of deletions
+        * "substitutions" - number of substitutions
+        * "num_ref_tokens" - number of reference tokens
+
+    Example
+    -------
+    >>> from speechbrain.utils.edit_distance import _batch_stats
+    >>> batch = [[[1,2,3],[4,5,6]], [[1,2,4],[5,6]]]
+    >>> refs, hyps = batch
+    >>> print(_batch_stats(refs, hyps))
+    Counter({'num_ref_tokens': 6, 'substitutions': 1, 'deletions': 1})
+    """
     if len(refs) != len(hyps):
         raise ValueError(
             "The reference and hypothesis batches are not of the same size"

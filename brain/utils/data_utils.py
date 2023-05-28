@@ -3,6 +3,16 @@ import collections.abc
 import torch
 
 
+def undo_padding(batch, lengths):
+    batch_max_len = batch.shape[1]
+    as_list = []
+    for seq, seq_length in zip(batch, lengths):
+        actual_size = int(torch.round(seq_length * batch_max_len))
+        seq_true = seq.narrow(0, 0, actual_size)
+        as_list.append(seq_true.tolist())
+    return as_list
+
+
 def recursive_update(d, u, must_match=False):
     """Similar function to `dict.update`, but for a nested `dict`.
 

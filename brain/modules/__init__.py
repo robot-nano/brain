@@ -5,3 +5,6 @@ from . import normalization
 from . import embedding
 from . import linear
 from . import containers
+from . import features
+from . import losses
+from . import schedulers

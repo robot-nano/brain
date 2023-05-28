@@ -32,8 +32,6 @@ from brain.dataio.sampler import (
     DistributedSamplerWrapper,
 )
 
-import pdb
-
 logger = logging.getLogger(__name__)
 DEFAULT_LOG_CONFIG = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_LOG_CONFIG = os.path.join(DEFAULT_LOG_CONFIG, "log-config.yaml")
@@ -146,13 +144,17 @@ class Brain:
 
         # Arguments passed via the run opts dictionary
         run_opt_defaults = {
+            "debug": False,
+            "debug_batches": 2,
+            "debug_epochs": 2,
+            "debug_persistently": False,
             "device": "cpu",
             "distributed_launch": False,
             "distributed_backend": "nccl",
             "find_unused_parameters": False,
             "jit_module_keys": None,
             "auto_mix_prec": False,
-            "max_grad_norm": None,
+            "max_grad_norm": 5.0,
             "nonfinite_patience": 3,
             "ckpt_interval_minutes": 10,
             "grad_accumulation_factor": 1,
@@ -372,7 +374,7 @@ class Brain:
 
         # Load dataset checkpoint to resume training if interrupted
         if self.checkpointer is not None:
-            self.checkpointer.recoverable_if_possible(
+            self.checkpointer.recover_if_possible(
                 device=torch.device(self.device)
             )
 
