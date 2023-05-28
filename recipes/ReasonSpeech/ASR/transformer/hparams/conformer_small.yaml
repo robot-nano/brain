@@ -1,33 +1,46 @@
 seed: 8887
-__set_seed: !apply:torch.manual_seed [!ref <seed>]
+__set_seed: !apply:torch.manual_seed [ !ref <seed> ]
 output_folder: !ref results/conformer_small/<seed>
+cer_file: !ref <output_folder>/cer.txt
 save_folder: !ref <output_folder>/save
-tokenizer_file: /code/ws/Brain/brain/recipes/ReasonSpeech/Tokenizer/results/tokenizer_bpe3850/3850_unigram.model
-
+train_log: !ref <output_folder>/train_log.txt
 
 ########################### Data files ############################
 train_csv: !ref <output_folder>/train.csv
 valid_csv: !ref <output_folder>/dev.csv
 test_csv: !ref <output_folder>/test.csv
+
+# tokenizer param file
+tokenizer_file: /code/ws/Brain/brain/recipes/ReasonSpeech/Tokenizer/results/tokenizer_bpe3850/3850_unigram.model
 ###################################################################
 
 
 ###################### Training parameters ########################
+ckpt_interval_minutes: 30
+
 number_of_epochs: 50
-num_workers: 1
+batch_size: 16
+grad_accumulation_factor: 2
+loss_reduction: "batchmean"
+num_workers: 4
+
+label_smoothing: 0.1
 
 # Ratio of noise add to teacher forcing
 noise_percent: 0.2
-###################################################################
+
+# Features parameters
+sample_rate: 16000
+n_fft: 400
+n_mels: 80
 
 lr_adam: 1.0
-
-sample_rate: 16000
 
 train_dataloader_opts:
     batch_size: 4
     num_workers: !ref <num_workers>
     shuffle: True
+###################################################################
 
 
 ######################### Model parameters #######################
@@ -45,15 +58,35 @@ blank_index: 0
 pad_index: 0
 bos_index: 1
 eos_index: 2
+
+# Decoding parameters
+min_decode_ratio: 0.0
+max_decode_ratio: 1.0
+valid_search_interval: 4
+valid_beam_size: 10
+test_beam_size: 10
 ##################################################################
 
 ############################## models ############################
+# tokenizer
+tokenizer: !new:sentencepiece.SentencePieceProcessor
+
+# compute features
+compute_features: !new:brain.modules.features.Fbank
+    sample_rate: !ref <sample_rate>
+    n_fft: !ref <n_fft>
+    n_mels: !ref <n_mels>
+
+normalize: !new:brain.processing.features.InputNormalization
+    norm_type: global
+    update_until_epoch: 4
+
+# torch model
 CNN: !new:brain.modules.CNN.Conv2d
     num_layers: 2
     channels: (1, 64, 32)
     kernel_sizes: (3, 3)
     strides: (2, 2)
-
 
 Transformer: !new:brain.modules.transformer.TransformerASR.TransformerASR
     input_size: 640
@@ -67,18 +100,63 @@ Transformer: !new:brain.modules.transformer.TransformerASR.TransformerASR
     activation: !ref <activation>
     causal: False
 
-tokenizer: !new:sentencepiece.SentencePieceProcessor
+seq_lin: !new:brain.modules.linear.Linear
+    input_size: !ref <d_model>
+    n_neurons: !ref <output_neurons>
+
+log_softmax: !new:torch.nn.LogSoftmax
+    dim: -1
+
+seq_cost: !name:brain.modules.losses.kldiv_loss
+    label_smoothing: !ref <label_smoothing>
+    reduction: !ref <loss_reduction>
 
 modules:
     CNN: !ref <CNN>
     Transformer: !ref <Transformer>
+    seq_lin: !ref <seq_lin>
+
+model: !new:torch.nn.ModuleList
+    - [!ref <CNN>, !ref <Transformer>, !ref <seq_lin>]
+
+valid_search: !new:brain.modules.decoders.seq2seq.S2STransformerBeamSearch
+    modules: [!ref <Transformer>, !ref <seq_lin>, None]
+    bos_index: !ref <bos_index>
+    eos_index: !ref <eos_index>
+    blank_index: !ref <blank_index>
+    min_decode_ratio: !ref <min_decode_ratio>
+    max_decode_ratio: !ref <max_decode_ratio>
+    beam_size: !ref <valid_beam_size>
+    using_eos_threshold: False
+    length_normalization: True
 ###################################################################
 
+######################## Optimizers ##############################
 Adam: !name:torch.optim.Adam
     lr: !ref <lr_adam>
     betas: (0.9, 0.98)
     eps: 0.000000001
 
+noam_annealing: !new:brain.modules.schedulers.NoamScheduler
+    lr_initial: !ref <lr_adam>
+    n_warmup_steps: 460000
+    model_size: !ref <d_model>
+
+cer_computer: !name:brain.utils.metric_stats.ErrorRateStats
+    space_token: " "
+acc_computer: !name:brain.utils.Accuracy.AccuracyStats
+#################################################################
+
+checkpointer: !new:brain.utils.checkpoints.Checkpointer
+    checkpoints_dir: !ref <save_folder>
+    recoverables:
+        model: !ref <model>
+        noam_scheduler: !ref <noam_annealing>
+        normalizer: !ref <normalize>
+        counter: !ref <epoch_counter>
+
+train_logger: !new:brain.utils.train_logger.FileTrainLogger
+    save_file: !ref <train_log>
 
 epoch_counter: !new:brain.utils.epoch_loop.EpochCounter
     limit: !ref <number_of_epochs>
