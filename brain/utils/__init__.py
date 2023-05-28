@@ -6,3 +6,5 @@ from . import logger
 from . import distributed
 from . import superpowers
 from . import epoch_loop
+from . import edit_distance
+from . import parameter_transfer

@@ -63,7 +63,7 @@ def pad_right_to(
     j = 0
     while i >= 0:
         assert (
-            target_shape[i] > tensor.shape[i]
+            target_shape[i] >= tensor.shape[i]
         ), "Target shape must be >= original shape for every dim"
         pads.extend([0, target_shape[i] - tensor.shape[i]])
         valid_vals.append(tensor.shape[j] / target_shape[j])

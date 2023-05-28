@@ -1,6 +1,7 @@
 from collections import OrderedDict
 import torch
 from torch import nn
+from brain.modules.normalization import LayerNorm
 
 
 class Conv2d(nn.Module):
@@ -14,20 +15,9 @@ class Conv2d(nn.Module):
         dilations=1,
         bias=True,
         activation=torch.nn.LeakyReLU,
-        norm=torch.nn.LayerNorm,
+        norm=None,
         dropout=0.1,
     ):
-        """
-
-        Parameters
-        ----------
-        n_layers
-        in_channels
-        kernel_sizes
-        strides
-        padding
-        dilations
-        """
         super().__init__()
         assert padding == "same" or padding == "valid"
         assert len(channels) == num_layers + 1
@@ -59,7 +49,13 @@ class Conv2d(nn.Module):
                     )
                 )
             )
-            # TODO: norm
+            # if norm is not None:
+            #     layers.append(
+            #         [
+            #             f"norm_{i}",
+            #             LayerNorm()
+            #         ]
+            #     )
             layers.append(
                 (
                     f"act_{i}",

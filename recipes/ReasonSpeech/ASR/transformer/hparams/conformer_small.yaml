@@ -1,0 +1,91 @@
+seed: 8887
+__set_seed: !apply:torch.manual_seed [!ref <seed>]
+output_folder: !ref results/conformer_small/<seed>
+save_folder: !ref <output_folder>/save
+tokenizer_file: /code/ws/Brain/brain/recipes/ReasonSpeech/Tokenizer/results/tokenizer_bpe3850/3850_unigram.model
+
+
+########################### Data files ############################
+train_csv: !ref <output_folder>/train.csv
+valid_csv: !ref <output_folder>/dev.csv
+test_csv: !ref <output_folder>/test.csv
+###################################################################
+
+
+###################### Training parameters ########################
+number_of_epochs: 50
+num_workers: 1
+
+# Ratio of noise add to teacher forcing
+noise_percent: 0.2
+###################################################################
+
+lr_adam: 1.0
+
+sample_rate: 16000
+
+train_dataloader_opts:
+    batch_size: 4
+    num_workers: !ref <num_workers>
+    shuffle: True
+
+
+######################### Model parameters #######################
+# Transformer
+d_model: 144
+nhead: 4
+num_encoder_layers: 12
+num_decoder_layers: 4
+d_ffn: 1024
+transformer_dropout: 0.1
+activation: !name:torch.nn.GELU
+output_neurons: 3900
+
+blank_index: 0
+pad_index: 0
+bos_index: 1
+eos_index: 2
+##################################################################
+
+############################## models ############################
+CNN: !new:brain.modules.CNN.Conv2d
+    num_layers: 2
+    channels: (1, 64, 32)
+    kernel_sizes: (3, 3)
+    strides: (2, 2)
+
+
+Transformer: !new:brain.modules.transformer.TransformerASR.TransformerASR
+    input_size: 640
+    tgt_vocab: !ref <output_neurons>
+    d_model: !ref <d_model>
+    nhead: !ref <nhead>
+    num_encoder_layers: !ref <num_encoder_layers>
+    num_decoder_layers: !ref <num_decoder_layers>
+    d_ffn: !ref <d_ffn>
+    dropout: !ref <transformer_dropout>
+    activation: !ref <activation>
+    causal: False
+
+tokenizer: !new:sentencepiece.SentencePieceProcessor
+
+modules:
+    CNN: !ref <CNN>
+    Transformer: !ref <Transformer>
+###################################################################
+
+Adam: !name:torch.optim.Adam
+    lr: !ref <lr_adam>
+    betas: (0.9, 0.98)
+    eps: 0.000000001
+
+
+epoch_counter: !new:brain.utils.epoch_loop.EpochCounter
+    limit: !ref <number_of_epochs>
+
+pretrainer: !new:brain.utils.parameter_transfer.Pretrainer
+    collect_in: !ref <output_folder>
+    loadables:
+        tokenizer: !ref <tokenizer>
+    paths:
+        tokenizer: !ref <tokenizer_file>

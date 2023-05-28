@@ -144,3 +144,12 @@ def register_checkpoint_hooks(cls):
             DEFAULT_TRANSFER_HOOKS[cls] = method
             logger.debug(f"Registered parameter transfer hook for {name}")
     return cls
+
+
+def get_default_hook(obj, default_hooks):
+    mro = inspect.getmro(type(obj))
+    for cls in mro:
+        if cls in default_hooks:
+            return default_hooks[cls]
+    # If we got there, no hook found
+    return None
