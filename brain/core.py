@@ -17,7 +17,6 @@ from types import SimpleNamespace
 from torch.nn import SyncBatchNorm
 import torch
 import torch.distributed as dist
-from torch.nn import DataParallel as DP
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import (
     DataLoader,
