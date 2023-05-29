@@ -1,3 +1,4 @@
+import gc
 import sys
 import random
 import copy
@@ -106,6 +107,7 @@ class ASR(brain.core.Brain):
                 self.optimizer_step += 1
                 self.hparams.noam_annealing(self.optimizer)
 
+        self.on_fit_batch_end(batch, outputs, loss, should_step)
         return loss.detach().cpu()
 
     def evaluate_batch(self, batch, stage):
@@ -168,6 +170,12 @@ class ASR(brain.core.Brain):
                 max_keys=["ACC"],
                 num_to_keep=1,
             )
+
+    def on_fit_batch_end(self, batch, outputs, loss, should_step):
+        if should_step and torch.cuda.mem_get_info()[0] / (1024 ** 2) < 2300:
+            torch.cuda.synchronize()
+            gc.collect()
+            torch.cuda.empty_cache()
 
 
 def dataio_prepare(hparams):
@@ -264,5 +272,6 @@ if __name__ == "__main__":
         train_set,
         valid_set,
         train_loader_kwargs=hparams["train_dataloader_opts"],
+        valid_loader_kwargs=hparams["valid_dataloader_opts"],
     )
     print(" ")

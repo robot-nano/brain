@@ -98,7 +98,7 @@ def batch_pad_right(tensors: list, mode="constant", value=0):
             [tensors[i].ndim == tensors[0].ndim for i in range(1, len(tensors))]
         )
     ):
-        raise IndexError("All tensors must have some number of dimensions")
+        raise IndexError("All tensors must have same number of dimensions")
 
     # FIXME we limit the support here: we allow padding of only the first dimension
     # need to remove this when feat extraction is updated to handle multichannel.

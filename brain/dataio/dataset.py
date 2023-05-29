@@ -33,16 +33,20 @@ class DynamicItemDataset(Dataset):
         data_point = self.data[data_id]
         return self.pipeline.compute_outputs({"id": data_id, **data_point})
 
-    def set_output_keys(self, keys):
-        self.pipeline.set_output_keys(keys)
-
     def add_dynamic_item(self, func, takes=None, provides=None):
         self.pipeline.add_dynamic_item(func, takes, provides)
+
+    def set_output_keys(self, keys):
+        self.pipeline.set_output_keys(keys)
 
     @classmethod
     def from_csv(
         cls, csv_path, dynamic_items=None, output_keys=None
     ):
+        if dynamic_items is None:
+            dynamic_items = []
+        if output_keys is None:
+            output_keys = []
         data = load_data_csv(csv_path)
         return cls(data, dynamic_items, output_keys)
 

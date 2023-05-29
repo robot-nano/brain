@@ -137,4 +137,4 @@ class Pretrainer:
             # If we got here, no custom hook or registered default hook exists
             MSG = f"Don't know how to load {type(obj)}. Register default hook \
                   or add custom hook for this object."
-            return RuntimeError(MSG)
+            raise RuntimeError(MSG)

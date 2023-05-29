@@ -80,7 +80,7 @@ class TransformerASR(TransformerInterface):
             tgt_key_padding_mask,
             src_mask,
             tgt_mask,
-        ) = self.make_mask(src, tgt, wav_len, pad_idx=pad_idx)
+        ) = self.make_masks(src, tgt, wav_len, pad_idx=pad_idx)
 
         src = self.custom_src_module(src)
         # add pos encoding to queries if are sinusoidal ones else
@@ -123,7 +123,7 @@ class TransformerASR(TransformerInterface):
 
         return encoder_out, decoder_out
 
-    def make_mask(self, src, tgt, wav_len=None, pad_idx=0):
+    def make_masks(self, src, tgt, wav_len=None, pad_idx=0):
         src_key_padding_mask = None
         if wav_len is not None:
             abs_len = torch.round(wav_len * src.shape[1])

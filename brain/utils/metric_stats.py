@@ -67,9 +67,9 @@ class MetricStats:
             self.summarize()
 
         message = f"Average score: {self.summary['average']}\n"
-        message += f"Min error: {self.summary['min_score']}\n"
+        message += f"Min error: {self.summary['min_score']} "
         message += f"id: {self.summary['min_id']}\n"
-        message += f"Max error: {self.summary['max_score']}\n"
+        message += f"Max error: {self.summary['max_score']} "
         message += f"id: {self.summary['max_id']}\n"
 
         filestream.write(message)

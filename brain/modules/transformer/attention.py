@@ -77,7 +77,7 @@ class RelPosMHAXL(nn.Module):
 
         if self._qkv_same_embed_dim is False:
             self.qk_proj_weight = nn.Parameter(
-                torch.empty(2, *embed_dim, embed_dim)
+                torch.empty(2 * embed_dim, embed_dim)
             )
             self.v_proj_weight = nn.Parameter(torch.empty(self.vdim, embed_dim))
         else:
@@ -139,7 +139,7 @@ class RelPosMHAXL(nn.Module):
             ones = torch.ones((x.size(2), x.size(3)), device=x.device)
             x = x * torch.tril(ones, x.size(3) - x.size(2))[None, None, :, :]
 
-        return x[..., :pos_len // 2 + 1]
+        return x[..., : pos_len // 2 + 1]
 
     def forward(
         self,
@@ -149,7 +149,7 @@ class RelPosMHAXL(nn.Module):
         pos_embs,
         key_padding_mask=None,
         attn_mask=None,
-        return_attn_weights=None,
+        return_attn_weights=True,
     ):
         # query, key and value of shape batch, time, embed_dim
         bsz = query.shape[0]
@@ -249,7 +249,7 @@ class MultiheadAttention(nn.Module):
         d_model,
         dropout=0.0,
         bias=True,
-        add_bis_kv=False,
+        add_bias_kv=False,
         add_zero_attn=False,
         kdim=None,
         vdim=None,
@@ -262,7 +262,7 @@ class MultiheadAttention(nn.Module):
             num_heads=nhead,
             dropout=dropout,
             bias=bias,
-            add_bias_kv=add_bis_kv,
+            add_bias_kv=add_bias_kv,
             add_zero_attn=add_zero_attn,
             kdim=kdim,
             vdim=vdim,

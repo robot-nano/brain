@@ -488,7 +488,7 @@ class Brain:
         with tqdm(
             train_set,
             initial=self.step,
-            dynamic_ncols=not enable,
+            dynamic_ncols=True,
             disable=not enable,
             colour=self.tqdm_barcolor["train"],
         ) as t:

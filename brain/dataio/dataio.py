@@ -15,7 +15,7 @@ def length_to_mask(
     assert len(length.shape) == 1
 
     if max_len is None:
-        max_len = length.max().long()  # using arange to generate mask
+        max_len = length.max().long().item()  # using arange to generate mask
     mask = torch.arange(
         max_len, device=length.device, dtype=length.dtype
     ).expand(length.shape[0], max_len) < length.unsqueeze(1)

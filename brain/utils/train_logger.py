@@ -13,7 +13,7 @@ class TrainLogger:
         train_stats=None,
         valid_stats=None,
         test_stats=None,
-        verbose=None
+        verbose=False,
     ):
         raise NotImplementedError
 
@@ -45,7 +45,7 @@ class FileTrainLogger(TrainLogger):
         train_stats=None,
         valid_stats=None,
         test_stats=None,
-        verbose=None
+        verbose=True,
     ):
         """See TrainLogger.log_stats()"""
         string_summary = self._stats_to_string(stats_meta)
