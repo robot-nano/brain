@@ -70,7 +70,7 @@ class TransformerASR(TransformerInterface):
         # reset parameters using xavier_normal_
         self._init_params()
 
-    def forward(self, src, tgt, wav_len=None, pad_idx=0):
+    def forward(self, src, tgt, wav_len: Optional[torch.Tensor] = None, pad_idx: int = 0):
         if src.ndim == 4:
             bz, t, ch1, ch2 = src.shape
             src = src.reshape(bz, t, ch1 * ch2)
@@ -123,7 +123,7 @@ class TransformerASR(TransformerInterface):
 
         return encoder_out, decoder_out
 
-    def make_masks(self, src, tgt, wav_len=None, pad_idx=0):
+    def make_masks(self, src, tgt, wav_len: Optional[torch.Tensor] = None, pad_idx: int = 0):
         src_key_padding_mask = None
         if wav_len is not None:
             abs_len = torch.round(wav_len * src.shape[1])

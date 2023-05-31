@@ -565,7 +565,6 @@ class Brain:
         epoch_counter,
         train_set,
         valid_set=None,
-        progressbar=None,
         train_loader_kwargs=None,
         valid_loader_kwargs=None
     ):
@@ -590,7 +589,7 @@ class Brain:
 
         self.on_fit_start()
 
-        # Only show progressbar if requested and main_process
+        # Only show progressbar if main_process
         enable = brain.utils.distributed.if_main_process()
 
         # Iterate epochs
@@ -661,13 +660,10 @@ class Brain:
         test_set,
         max_key=None,
         min_key=None,
-        progressbar=None,
         test_loader_kwargs=None,
     ):
         if test_loader_kwargs is None:
             test_loader_kwargs = {}
-        if progressbar is None:
-            progressbar = not self.noprogressbar
 
         if not (
             isinstance(test_set, DataLoader)
@@ -684,7 +680,6 @@ class Brain:
             for batch in tqdm(
                 test_set,
                 dynamic_ncols=True,
-                disable=not progressbar,
                 colour=self.tqdm_barcolor["test"],
             ):
                 self.step += 1

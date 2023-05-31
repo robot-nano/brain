@@ -257,14 +257,14 @@ class TransformerEncoder(nn.Module):
         output = src
         attention_list = []
         for i, enc_layer in enumerate(self.layers):
-                output, attention = enc_layer(
-                    output,
-                    src_mask=src_mask,
-                    src_key_padding_mask=src_key_padding_mask,
-                    pos_embs=pos_embs,
-                )
-                if attention is not None:
-                    attention_list.append(attention)
+            output, attention = enc_layer(
+                output,
+                src_mask=src_mask,
+                src_key_padding_mask=src_key_padding_mask,
+                pos_embs=pos_embs,
+            )
+            if attention is not None:
+                attention_list.append(attention)
         output = self.norm(output)
         return output, attention_list
 
@@ -275,13 +275,13 @@ class TransformerDecoderLayer(nn.Module):
         d_ffn,
         nhead,
         d_model,
-        kdim=None,
-        vdim=None,
-        dropout=0.0,
+        kdim: Optional[int] = None,
+        vdim: Optional[int] = None,
+        dropout: int = 0.0,
         activation=nn.ReLU,
-        normalize_before=False,
-        attention_type="regularMHA",
-        causal=None,
+        normalize_before: bool = False,
+        attention_type: str = "regularMHA",
+        causal: bool = False,
     ):
         super().__init__()
         self.nhead = nhead
@@ -330,12 +330,12 @@ class TransformerDecoderLayer(nn.Module):
         self,
         tgt,
         memory,
-        tgt_mask=None,
-        memory_mask=None,
-        tgt_key_padding_mask=None,
-        memory_key_padding_mask=None,
-        pos_embs_tgt=None,
-        pos_embs_src=None,
+        tgt_mask: Optional[torch.Tensor] = None,
+        memory_mask: Optional[torch.Tensor] = None,
+        tgt_key_padding_mask: Optional[torch.Tensor] = None,
+        memory_key_padding_mask: Optional[torch.Tensor] = None,
+        pos_embs_tgt: Optional[torch.Tensor] = None,
+        pos_embs_src: Optional[torch.Tensor] = None,
     ):
         if self.normalize_before:
             tgt1 = self.norm1(tgt)
@@ -432,12 +432,12 @@ class TransformerDecoder(nn.Module):
         self,
         tgt,
         memory,
-        tgt_mask=None,
-        memory_mask=None,
-        tgt_key_padding_mask=None,
-        memory_key_padding_mask=None,
-        pos_embs_tgt=None,
-        pos_embs_src=None,
+        tgt_mask: Optional[torch.Tensor] = None,
+        memory_mask: Optional[torch.Tensor] = None,
+        tgt_key_padding_mask: Optional[torch.Tensor] = None,
+        memory_key_padding_mask: Optional[torch.Tensor] = None,
+        pos_embs_tgt: Optional[torch.Tensor] = None,
+        pos_embs_src: Optional[torch.Tensor] = None,
     ):
         output = tgt
         self_attns, multihead_attns = [], []
@@ -473,7 +473,7 @@ class NormalizedEmbedding(nn.Module):
         return self.emb(x) * math.sqrt(self.d_model)
 
 
-def get_key_padding_mask(padded_input, pad_idx):
+def get_key_padding_mask(padded_input, pad_idx: int):
     if len(padded_input.shape) == 4:
         bz, time, ch1, ch2 = padded_input.shape
         padded_input = padded_input.reshape(bz, time, ch1 * ch2)

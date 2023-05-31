@@ -1,17 +1,17 @@
 import csv
 import logging
 import os
-
+from typing import Optional
 import torch
 
 logger = logging.getLogger(__name__)
 
 
 def length_to_mask(
-    length: torch.tensor,
-    max_len=None,
-    dtype=None,
-    device=None):
+    length: torch.Tensor,
+    max_len: Optional[int] = None,
+    dtype: Optional[torch.dtype] = None,
+    device: Optional[torch.device] = None):
     assert len(length.shape) == 1
 
     if max_len is None:
@@ -168,4 +168,3 @@ def extract_concepts_values(sequences, keep_values, tag_in, tag_out, space):
             processed_sequence.append("")
         results.append(processed_sequence)
     return results
-
