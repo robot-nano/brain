@@ -135,7 +135,6 @@ class TransformerASR(TransformerInterface):
         tgt_mask = get_lookahead_mask(tgt)
         return src_key_padding_mask, tgt_key_padding_mask, src_mask, tgt_mask
 
-    @torch.jit.export
     @torch.no_grad()
     def decode(self, tgt, encoder_out, enc_len=None):
         tgt_mask = get_lookahead_mask(tgt)
@@ -164,7 +163,6 @@ class TransformerASR(TransformerInterface):
         )
         return predictions, multihead_attns[-1]
 
-    @torch.jit.export
     def encode(self, src, wav_len=None):
         # reshape the src vector to [Batch, Time, Fea] if a 4d vector is given
         if src.dim() == 4:
