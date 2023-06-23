@@ -1,4 +1,4 @@
-seed: 8888
+seed: 1234
 __set_seed: !apply:torch.manual_seed [ !ref <seed> ]
 output_folder: !ref results/conformer_small/<seed>
 cer_file: !ref <output_folder>/cer.txt
@@ -45,8 +45,8 @@ valid_dataloader_opts:
     num_workers: !ref <num_workers>
 
 test_dataloader_opts:
-    batch_size: 4
-    num_workers: 4
+    batch_size: 1
+    num_workers: 1
 ###################################################################
 
 
@@ -71,7 +71,7 @@ min_decode_ratio: 0.0
 max_decode_ratio: 1.0
 valid_search_interval: 4
 valid_beam_size: 10
-test_beam_size: 10
+test_beam_size: 1
 ##################################################################
 
 ############################## models ############################
@@ -126,6 +126,14 @@ modules:
 model: !new:torch.nn.ModuleList
     - [!ref <CNN>, !ref <Transformer>, !ref <seq_lin>]
 
+feats_fwd: !new:brain.feats.FeatsFwd
+    modules: [!ref <compute_features>, !ref <normalize>, !ref <CNN>, !ref <Transformer>]
+
+decode: !new:brain.feats.Decode
+    transformer: !ref <Transformer>
+    seq_lin: !ref <seq_lin>
+    softmax: !ref <log_softmax>
+
 valid_search: !new:brain.modules.decoders.seq2seq.S2STransformerBeamSearch
     modules: [!ref <Transformer>, !ref <seq_lin>, None]
     bos_index: !ref <bos_index>
@@ -146,7 +154,7 @@ test_search: !new:brain.modules.decoders.seq2seq.S2STransformerBeamSearch
     max_decode_ratio: !ref <max_decode_ratio>
     beam_size: !ref <test_beam_size>
     using_eos_threshold: False
-    length_normalization: True
+    length_normalization: False
 ###################################################################
 
 ######################## Optimizers ##############################
@@ -157,7 +165,7 @@ Adam: !name:torch.optim.Adam
 
 noam_annealing: !new:brain.modules.schedulers.NoamScheduler
     lr_initial: !ref <lr_adam>
-    n_warmup_steps: 1200000
+    n_warmup_steps: 460000
     model_size: !ref <d_model>
 
 cer_computer: !name:brain.utils.metric_stats.ErrorRateStats

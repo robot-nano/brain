@@ -4,5 +4,6 @@ from . import modules
 from . import tokenizers
 from . import pretrained
 from . import processing
+from . import feats
 from .core import Stage, Brain, create_experiment_directory
 from .utils.arguments import parse_arguments

@@ -8,6 +8,7 @@ import torchaudio
 import brain
 from brain.utils.distributed import run_on_main
 from hyperpyyaml import load_hyperpyyaml
+from torch.utils.mobile_optimizer import optimize_for_mobile
 import pdb
 
 
@@ -65,7 +66,7 @@ class ASR(brain.core.Brain):
             ):
                 # Decode token terms to words
                 predicted_words = [
-                    tokenizer.decode_ids(utt_seq) for utt_seq in hyps
+                    self.tokenizer.decode_ids(utt_seq) for utt_seq in hyps
                 ]
                 target_words = batch.wrd
                 self.cer_metric.append(ids, predicted_words, target_words)
@@ -171,6 +172,78 @@ class ASR(brain.core.Brain):
                 num_to_keep=1,
             )
 
+    def export_jit(self, out_dir):
+        import os
+        self.checkpointer.recover_if_possible(
+            max_key=None,
+            min_key=None,
+            device=torch.device(self.device)
+        )
+
+        with torch.no_grad():
+            for module in self.modules.items():
+                module[1].eval()
+
+            tokens_bos = torch.tensor(
+                [[1, 5, 266, 659, 1324, 1821,
+                 258, 2845, 1374, 6, 2541,
+                 895, 497, 1014, 1014, 831,
+                 1104, 264, 89, 1513, 3398]]
+            )
+
+            t_fbank = torch.jit.trace(self.hparams.compute_features, torch.rand(1, 160000))
+            wav = torchaudio.load("/home/w2204/Music/1.flac")[0]
+            feats = t_fbank(wav)
+            t_normalize = torch.jit.trace(self.hparams.normalize, (feats, torch.tensor([1.])))
+            feats = self.hparams.normalize(feats, torch.tensor([1.]), epoch=5)
+
+            t_CNN = torch.jit.trace(self.modules.CNN, feats)
+            src = t_CNN(feats).unsqueeze(0).transpose(1, 2)
+
+            enc_out, pred = self.modules.Transformer(
+                src, tokens_bos, torch.tensor([1.]), pad_idx=self.hparams.pad_index
+            )
+            print(enc_out.shape)
+
+            t_Transformer = torch.jit.trace_module(
+                self.modules.Transformer,
+                {"encode": src,
+                 "decode": (torch.LongTensor([[1, 5]]), enc_out)})
+            torch.jit.save(t_fbank, os.path.join(out_dir, "fbank.pt"))
+            torch.jit.save(t_normalize, os.path.join(out_dir, "normalize.pt"))
+            torch.jit.save(t_CNN, os.path.join(out_dir, "CNN.pt"))
+            torch.jit.save(t_Transformer.custom_src_module, os.path.join(out_dir, "custom_src_module.pt"))
+            torch.jit.save(t_Transformer.custom_tgt_module, os.path.join(out_dir, "custom_tgt_module.pt"))
+            torch.jit.save(t_Transformer.positional_encoding, os.path.join(out_dir, "positional_encoding.pt"))
+            torch.jit.save(t_Transformer.encoder, os.path.join(out_dir, "encoder.pt"))
+            torch.jit.save(t_Transformer.decoder, os.path.join(out_dir, "decoder.pt"))
+        print(" ")
+
+    def temp(self, out_dir):
+        self.checkpointer.recover_if_possible(
+            max_key=None,
+            min_key=None,
+            device=torch.device(self.device)
+        )
+        with torch.no_grad():
+            feats_fwd = self.hparams.feats_fwd.eval()
+            enc_out = feats_fwd(torch.ones((1, 80000)))
+            traced = torch.jit.trace(feats_fwd, torch.rand(1, 80000))
+            mobile_model = optimize_for_mobile(traced)
+            mobile_model._save_for_lite_interpreter("/home/w2204/Desktop/temp/modules/feats_fwd.pt")
+
+            decode = self.hparams.decode.eval()
+            decode_out = decode(torch.LongTensor([[1., 6.] for _ in range(10)]),
+                                torch.repeat_interleave(enc_out, repeats=10, dim=0))
+            traced = torch.jit.trace(
+                decode,
+                (torch.LongTensor([[1., 6.] for _ in range(10)]),
+                 torch.repeat_interleave(enc_out, repeats=10, dim=0))
+            )
+            # torch.jit.save(traced, "/home/w2204/Desktop/temp/modules/decode.pt")
+            mobile_model = optimize_for_mobile(traced)
+            mobile_model._save_for_lite_interpreter("/home/w2204/Desktop/temp/modules/decode.pt")
+
     def on_fit_batch_end(self, batch, outputs, loss, should_step):
         if should_step and torch.cuda.mem_get_info()[0] / (1024 ** 2) < 2300:
             torch.cuda.synchronize()
@@ -266,12 +339,19 @@ if __name__ == "__main__":
         run_opts=run_opts,
         checkpointer=hparams["checkpointer"],
     )
+    asr_brain.tokenizer = tokenizer
 
-    asr_brain.fit(
-        asr_brain.hparams.epoch_counter,
-        train_set,
-        valid_set,
-        train_loader_kwargs=hparams["train_dataloader_opts"],
-        valid_loader_kwargs=hparams["valid_dataloader_opts"],
+    # asr_brain.fit(
+    #     asr_brain.hparams.epoch_counter,
+    #     train_set,
+    #     valid_set,
+    #     train_loader_kwargs=hparams["train_dataloader_opts"],
+    #     valid_loader_kwargs=hparams["valid_dataloader_opts"],
+    # )
+    asr_brain.evaluate(
+        test_set,
+        test_loader_kwargs=hparams["test_dataloader_opts"]
     )
-    print(" ")
+
+    # asr_brain.export_jit("/home/w2204/Desktop/temp/modules/origin")
+    asr_brain.temp("/home/w2204/Desktop/temp/modules")
