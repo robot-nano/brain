@@ -49,13 +49,13 @@ class Conv2d(nn.Module):
                     )
                 )
             )
-            # if norm is not None:
-            #     layers.append(
-            #         [
-            #             f"norm_{i}",
-            #             LayerNorm()
-            #         ]
-            #     )
+            if norm is not None:
+                layers.append(
+                    [
+                        f"norm_{i}",
+                        LayerNorm()
+                    ]
+                )
             layers.append(
                 (
                     f"act_{i}",
