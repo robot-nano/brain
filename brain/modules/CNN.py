@@ -74,3 +74,14 @@ class Conv2d(nn.Module):
     def forward(self, x):
         out = self.conv(x)
         return out
+
+
+def infer_conv_output_dim(in_channels, input_dim, out_channels):
+    sample_seq_len = 200
+    sample_bsz = 10
+    x = torch.randn(sample_bsz, in_channels, sample_seq_len, input_dim)
+    x = torch.nn.Conv2d(in_channels, out_channels, 3, stride=2, padding=3 // 2)(x)
+    x = torch.nn.Conv2d(out_channels, out_channels, 3, stride=2, padding=3 // 2)(x)
+    x = x.transpose(1, 2)
+    mb, seq = x.size()[:2]
+    return x.contiguous().view(mb, seq, -1).size(-1)
