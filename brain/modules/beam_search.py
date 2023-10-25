@@ -41,3 +41,25 @@ class BeamSearch(Search):
 
         # At this point, beams_buf and indices_buf are single-dim and contain relative indices
         return scores_buf, indices_buf, beams_buf
+
+
+class PrefixConstrainedBeamSearch(Search):
+    def __init__(self, tgt_dict, prefix_allowed_tokens_fn):
+        super().__init__(tgt_dict)
+        self.prefix_allowed_tokens_fn = prefix_allowed_tokens_fn
+        self.stop_on_max_len = True
+
+    @torch.jit.export
+    def apply_mask(self, x, prev_output_tokens, original_batch_idxs):
+        beam_size = x.shape[0] // original_batch_idxs.shape[0]
+        original_batch_idxs = (
+            original_batch_idxs.unsqueeze(-1).repeat((1, beam_size)).flatten().tolist()
+        )
+
+        mask = torch.full_like(x, -math.inf)
+        for sent_i, (sent, batch_i) in enumerate(
+            zip(prev_output_tokens, original_batch_idxs)
+        ):
+            mask[sent_i, :, self.prefix_allowed_tokens_fn(batch_i, sent)] = 0
+
+        return mask
