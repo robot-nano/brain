@@ -29,3 +29,16 @@ class EMA(object):
                 self.fp32_params[param_key].copy_(state_dict[param_key])
             else:
                 self.fp32_params[param_key] = _to_float(state_dict[param_key])
+
+    def setp(self, new_model, updates=None):
+         if updates is not None:
+            self._set_decay(
+                0 if updates < self.config.ema_start_update else self.config.ema_decay
+            )
+        if self.config.ema_update_freq > 1:
+            self.update_freq_counter += 1
+            if self.update_freq_counter >= self.config.ema_update_freq:
+                self._step_internal(new_model, updates)
+                self.update_freq_counter = 0
+        else:
+            self._step_internal(new_model, updates)
