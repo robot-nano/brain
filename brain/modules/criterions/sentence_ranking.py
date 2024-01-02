@@ -20,3 +20,16 @@ class SentenceRankingCriterion(object):
         parser.add_argument('--ranking-head-name',
                             default='sentence_classification_head',
                             help='name of the ranking head to use')
+
+    def forward(self, model, sample, reduce=True):
+
+        scores = []
+        for idx in range(self.num_classes):
+            score, _ = model(
+                **sample["net_input{idx}".format(idx=idx + 1)],
+                classification_head_name=self.ranking_head_name,
+            )
+            scores.append(score)
+
+        logits = torch.cat(scores, dim=1)
+        sample_size = logits.size(0)
