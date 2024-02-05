@@ -52,3 +52,33 @@ class SentencePredictionCriterion(object):
             features_only=True,
             classification_head_name=self.classification_head_name,
         )
+
+        targets = model.get_targets(sample, [logits]).view(-1)
+        sample_size = targets.numel()
+
+        if not self.regression_target:
+            lprobs = F.log_softmax(logits, dim=-1, dtype=torch.float32)
+            task_loss = F.nll_loss(lprobs, targets, reduction="sum")
+        else:
+            logits = logits.view(-1).float()
+            targets = targets.float()
+            task_loss = F.mse_loss(logits, targets, reduction="sum")
+
+        if (
+            hasattr(model, "args")
+            and hasattr(model.args, "mha_reg_scale_factor")
+            and model.args.mha_reg_scale_factor != 0.0
+        ):
+            mha_reg_loss = model._get_adaptive_head_loss()
+            loss += mha_reg_loss
+            logging_output.update({"mha_reg_loss": mha_reg_loss})
+        if (
+            hasattr(model, "args")
+            and hasattr(model.args, "ffn_reg_scale_factor")
+            and model.args.ffn_reg_scale_factor != 0.0
+        ):
+            ffn_reg_loss = model._get_adaptive_ffn_loss()
+            loss += ffn_reg_loss
+            logging_output.update({"ffn_reg_loss": ffn_reg_loss})
+
+        return loss, sample_size, logging_output
