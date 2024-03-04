@@ -42,5 +42,4 @@ $ git clone git@github.com:robot-nano/brain.git
 
 ---
 
-> GitHub [@amitmerchant1990](https://github.com/amitmerchant1990) &nbsp;&middot;&nbsp;
-> Twitter [@amit_merchant](https://twitter.com/amit_merchant)
+> GitHub [@robot-nano](https://github.com/robot-nano)
