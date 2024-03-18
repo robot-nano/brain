@@ -25,3 +25,19 @@ from fairseq.models import FairseqDecoder, FairseqEncoder
 from omegaconf import DictConfig, OmegaConf, open_dict
 
 logger = logging.getLogger(__name__)
+
+
+def save_checkpoint(cfg: CheckpointConfig, trainer, epoch_itr, val_loss):
+    from fairseq import meters
+
+    # only one worker should attempt to create the required dir
+    if trainer.data_parallel_rank == 0:
+        os.makedirs(cfg.save_dir, exist_ok=True)
+
+    prev_best = getattr(save_checkpoint, "best", val_loss)
+    if val_loss is not None:
+        best_function = max if cfg.maximize_best_checkpoint_metric else min
+        save_checkpoint.best = best_function(val_loss, prev_best)
+
+    if cfg.no_save:
+        return None
