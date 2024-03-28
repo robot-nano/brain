@@ -77,12 +77,6 @@ def save_checkpoint(cfg: CheckpointConfig, trainer, epoch_itr, val_loss):
     )
     if val_loss is not None and cfg.keep_best_checkpoints > 0:
         worst_best = getattr(save_checkpoint, "best", None)
-        chkpts = checkpoint_paths(
-            cfg.save_dir,
-            pattern=r"checkpoint\.best_{}_(\d+\.?\d*){}\.pt".format(
-                cfg.best_checkpoint_metric, suffix
-            ),
-        )
         if len(chkpts) > 0:
             p = chkpts[-1] if cfg.maximize_best_checkpoint_metric else chkpts[0]
             worst_best = float(p.rsplit("_")[-1].replace("{}.pt".format(suffix), ""))
