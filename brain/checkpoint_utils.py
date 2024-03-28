@@ -75,3 +75,26 @@ def save_checkpoint(cfg: CheckpointConfig, trainer, epoch_itr, val_loss):
         not hasattr(save_checkpoint, "best")
         or is_better(val_loss, save_checkpoint.best)
     )
+    if val_loss is not None and cfg.keep_best_checkpoints > 0:
+        worst_best = getattr(save_checkpoint, "best", None)
+        chkpts = checkpoint_paths(
+            cfg.save_dir,
+            pattern=r"checkpoint\.best_{}_(\d+\.?\d*){}\.pt".format(
+                cfg.best_checkpoint_metric, suffix
+            ),
+        )
+        if len(chkpts) > 0:
+            p = chkpts[-1] if cfg.maximize_best_checkpoint_metric else chkpts[0]
+            worst_best = float(p.rsplit("_")[-1].replace("{}.pt".format(suffix), ""))
+        # add random digits to resolve ties
+        with data_utils.numpy_seed(epoch, updates, val_loss):
+            rand_sfx = np.random.randint(0, cfg.keep_best_checkpoints)
+
+        checkpoint_conds[
+            "checkpoint.best_{}_{:.3f}{}{}.pt".format(
+                cfg.best_checkpoint_metric, val_loss, rand_sfx, suffix
+            )
+        ] = worst_best is None or is_better(val_loss, worst_best)
+    checkpoint_conds[
+        "checkpoint_last{}.pt".format(suffix)
+    ] = not cfg.no_last_checkpoints
