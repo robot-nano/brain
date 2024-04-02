@@ -92,3 +92,19 @@ def save_checkpoint(cfg: CheckpointConfig, trainer, epoch_itr, val_loss):
     checkpoint_conds[
         "checkpoint_last{}.pt".format(suffix)
     ] = not cfg.no_last_checkpoints
+
+    extra_state = {
+        "train_iterator": epoch_itr.state_dict(),
+        "val_loss": val_loss,
+    }
+
+    if hasattr(trainer.task, "get_checkpoint_dict"):
+        extra_state = {**extra_state, **trainer.task.get_checkpoint_dict()}
+        logger.info(f"State of {trainer.task.__class__.__name__} is ready to be persisted with the checkpoint")
+
+    if hasattr(save_checkpoint, "best"):
+        extra_state.update({"best": save_checkpoint.best})
+
+    checkpoints = [
+        os.path.join(cfg.save_dir, fn) for fn, cond in checkpoint_conds.items() if cond
+    ]
