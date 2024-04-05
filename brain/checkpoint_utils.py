@@ -108,3 +108,26 @@ def save_checkpoint(cfg: CheckpointConfig, trainer, epoch_itr, val_loss):
     checkpoints = [
         os.path.join(cfg.save_dir, fn) for fn, cond in checkpoint_conds.items() if cond
     ]
+
+    saved_cp = None
+    if len(checkpoints) > 0 and trainer.should_save_checkpoint_on_current_rank:
+        saved_cp = trainer.save_checkpoint(checkpoints[0], extra_state)
+        for cp in checkpoints[1:]:
+            if cfg.write_checkpoints_asynchronously:
+                # TODO[ioPath]: Need to implement a delayed asynchronous
+                # file copying/moving feature.
+                logger.warning(
+                    f"ioPath is not copying {checkpoints[0]} to {cp} "
+                    "since async write mode is on."
+                )
+            else:
+                assert PathManager.copy(
+                    checkpoints[0], cp, overwrite=True
+                ), f"Failed to copy {checkpoints[0]} to {cp}"
+
+        write_timer.stop()
+        logger.info(
+            "Saved checkpoint {} (epoch {} @ {} updates, score {}) (writing took {} seconds)".format(
+                checkpoints[0], epoch, updates, val_loss, write_timer.sum
+            )
+        )
