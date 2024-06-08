@@ -55,3 +55,21 @@ class BinarizeSummary:
         self.replaced = replaced
         self.num_seq += other.num_seq
         self.num_tok += other.num_tok
+
+
+class Binarizer(ABC):
+    """
+    a binarizer describes how to take a string and build a tensor out of it
+    """
+
+    @abstractmethod
+    def binarize_line(
+        self,
+        line: str,
+        summary: BinarizeSummary,
+    ) -> torch.IntTensor:
+        ...
+
+
+def _worker_prefix(output_prefix: str, worker_id: int):
+    return f"{output_prefix}.pt{worker_id}"
