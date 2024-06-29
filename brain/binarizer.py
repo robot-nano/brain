@@ -223,3 +223,58 @@ class FileBinarizer:
         ds.finalize(idx_file)
 
         return summ
+
+class VocabularyDatasetBinarizer(Binarizer):
+    """
+    Takes a Dictionary/Vocabulary, assign ids to each
+    token using the dictionary encode_line function.
+    """
+
+    def __init__(
+        self,
+        dict: Dictionary,
+        tokenize: tp.Callable[[str], tp.List[str]] = tokenize_line,
+        append_eos: bool = True,
+        reverse_order: bool = False,
+        already_numberized: bool = False,
+    ) -> None:
+        self.dict = dict
+        self.tokenize = tokenize
+        self.append_eos = append_eos
+        self.reverse_order = reverse_order
+        self.already_numberized = already_numberized
+        super().__init__()
+
+    def binarize_line(
+        self,
+        line: str,
+        summary: BinarizeSummary,
+    ):
+        if summary.replaced is None:
+            summary.replaced = Counter()
+
+        def replaced_consumer(word, idx):
+            if idx == self.dict.unk_index and word != self.dict.unk_word:
+                summary.replaced.update([word])
+
+        if self.already_numberized:
+            id_strings = line.strip().split()
+            id_list = [int(id_string) for id_string in id_strings]
+            if self.reverse_order:
+                id_list.reverse()
+            if self.append_eos:
+                id_list.append(self.dict.eos())
+            ids = torch.IntTensor(id_list)
+        else:
+            ids = self.dict.encode_line(
+                line=line,
+                line_tokenizer=self.tokenize,
+                add_if_not_exist=False,
+                consumer=replaced_consumer,
+                append_eos=self.append_eos,
+                reverse_order=self.reverse_order,
+            )
+
+        summary.num_seq += 1
+        summary.num_tok += len(ids)
+        return ids
