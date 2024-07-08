@@ -278,3 +278,26 @@ class VocabularyDatasetBinarizer(Binarizer):
         summary.num_seq += 1
         summary.num_tok += len(ids)
         return ids
+
+class AlignmentDatasetBinarizer(Binarizer):
+    """
+    binarize by parsing a set of alignments and packing
+    them in a tensor (see utils.parse_alignment)
+    """
+
+    def __init__(
+        self,
+        alignment_parser: tp.Callable[[str], torch.IntTensor],
+    ) -> None:
+        super().__init__()
+        self.alignment_parser = alignment_parser
+
+    def binarize_line(
+        self,
+        line: str,
+        summary: BinarizeSummary,
+    ):
+        ids = self.alignment_parser(line)
+        summary.num_seq += 1
+        summary.num_tok += len(ids)
+        return ids
