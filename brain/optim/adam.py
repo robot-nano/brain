@@ -33,3 +33,37 @@ class FairseqAdamConfig(FairseqDataclass):
     # TODO common vars below in parent
     tpu: bool = II("common.tpu")
     lr: List[float] = II("optimization.lr")
+
+class SeqAdam(FairseqOptimizer):
+    """Adam optimizer for fairseq.
+
+    Important note: this optimizer corresponds to the "AdamW" variant of
+    Adam in its weight decay behavior. As such, it is most closely
+    analogous to torch.optim.AdamW from PyTorch.
+    """
+
+    def __init__(self, cfg: FairseqAdamConfig, params):
+        super().__init__(cfg)
+        fused_adam_cls = get_fused_adam_class()
+        use_fused_adam = (
+            not getattr(cfg, "use_old_adam", False)
+            and fused_adam_cls is not None
+            and torch.cuda.is_available()
+        )
+        if getattr(cfg, "tpu", False):
+            if self.cfg.fp16_adam_stats:
+                raise NotImplementedError("--fp16-adam-stats is only supported on GPU")
+            # on TPUs we use the Adam defined here, since it
+            # automatically casts gradients to FP32
+            self._optimizer = Adam(params, **self.optimizer_config)
+        elif use_fused_adam:
+            logger.info("using FusedAdam")
+            self._optimizer = fused_adam_cls(
+                params, use_fp16_stats=self.cfg.fp16_adam_stats, **self.optimizer_config
+            )
+        else:
+            if self.cfg.fp16_adam_stats:
+                raise NotImplementedError(
+                    "--fp16-adam-stats is only supported with FusedAdamV1"
+                )
+            self._optimizer = Adam(params, **self.optimizer_config)
