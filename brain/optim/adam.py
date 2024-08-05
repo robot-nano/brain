@@ -67,3 +67,13 @@ class SeqAdam(FairseqOptimizer):
                     "--fp16-adam-stats is only supported with FusedAdamV1"
                 )
             self._optimizer = Adam(params, **self.optimizer_config)
+
+    def average_params(self):
+    """Reduce Params is only used during BMUF distributed training."""
+    state_dict = self.optimizer.state_dict()
+    total_gpus = float(dist.get_world_size())
+    for _, value in state_dict["state"].items():
+        value["exp_avg"] /= total_gpus
+        value["exp_avg_sq"] /= total_gpus
+        dist.all_reduce(value["exp_avg"], op=dist.ReduceOp.SUM)
+        dist.all_reduce(value["exp_avg_sq"], op=dist.ReduceOp.SUM)
