@@ -47,3 +47,78 @@ class Adamax(torch.optim.Optimizer):
             bias_correction=bias_correction,
         )
         super(Adamax, self).__init__(params, defaults)
+
+        @property
+    def supports_memory_efficient_fp16(self):
+        return True
+
+    @property
+    def supports_flat_params(self):
+        return True
+
+    def step(self, closure=None):
+        """Performs a single optimization step.
+
+        Args:
+            closure (callable, optional): A closure that reevaluates the model
+                and returns the loss.
+        """
+        loss = None
+        if closure is not None:
+            loss = closure()
+
+        for group in self.param_groups:
+            for p in group["params"]:
+                if p.grad is None:
+                    continue
+                grad = p.grad.data.float()
+                if grad.is_sparse:
+                    raise RuntimeError("Adamax does not support sparse gradients")
+
+                p_data_fp32 = p.data
+                if p.data.dtype in {torch.float16, torch.bfloat16}:
+                    p_data_fp32 = p_data_fp32.float()
+
+                state = self.state[p]
+
+                # State initialization
+                if len(state) == 0:
+                    state["step"] = 0
+                    state["exp_avg"] = torch.zeros_like(p_data_fp32)
+                    state["exp_inf"] = torch.zeros_like(p_data_fp32)
+                else:
+                    state["exp_avg"] = state["exp_avg"].to(p_data_fp32)
+                    state["exp_inf"] = state["exp_inf"].to(p_data_fp32)
+
+                exp_avg, exp_inf = state["exp_avg"], state["exp_inf"]
+                beta1, beta2 = group["betas"]
+                eps = group["eps"]
+
+                state["step"] += 1
+
+                # Update biased first moment estimate.
+                exp_avg.mul_(beta1).add_(grad, alpha=1 - beta1)
+
+                # Update the exponentially weighted infinity norm.
+                torch.max(
+                    exp_inf.mul_(beta2),
+                    grad.abs_(),
+                    out=exp_inf,
+                )
+
+                step_size = group["lr"]
+                if group["bias_correction"]:
+                    bias_correction = 1 - beta1 ** state["step"]
+                    step_size /= bias_correction
+
+                if group["weight_decay"] != 0:
+                    p_data_fp32.add_(
+                        p_data_fp32, alpha=-group["weight_decay"] * group["lr"]
+                    )
+
+                p_data_fp32.addcdiv_(exp_avg, exp_inf.add(eps), value=-step_size)
+
+                if p.data.dtype in {torch.float16, torch.bfloat16}:
+                    p.data.copy_(p_data_fp32)
+
+        return loss
