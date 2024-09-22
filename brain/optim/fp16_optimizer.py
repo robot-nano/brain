@@ -71,3 +71,34 @@ class _FP16OptimizerMixin(object):
                     p32.optim_overrides = p.optim_overrides
                 fp32_params.append(p32)
             return fp32_params
+
+    def state_dict(self):
+        """Return the optimizer's state dict."""
+        state_dict = self.fp32_optimizer.state_dict()
+        if self.scaler is not None:
+            state_dict["loss_scale"] = self.scaler.loss_scale
+        return state_dict
+
+    def load_state_dict(self, state_dict, optimizer_overrides=None):
+        """Load an optimizer state dict.
+
+        In general we should prefer the configuration of the existing optimizer
+        instance (e.g., learning rate) over that found in the state_dict. This
+        allows us to resume training from a checkpoint using a new set of
+        optimizer args.
+        """
+        if "loss_scale" in state_dict and self.scaler is not None:
+            self.scaler.loss_scale = state_dict["loss_scale"]
+        self.fp32_optimizer.load_state_dict(state_dict, optimizer_overrides)
+
+    def backward(self, loss):
+        """Computes the sum of gradients of the given tensor w.r.t. graph leaves.
+
+        Compared to :func:`fairseq.optim.FairseqOptimizer.backward`, this
+        function additionally dynamically scales the loss to avoid gradient
+        underflow.
+        """
+        if self.scaler is not None:
+            loss = self.scaler.scale(loss)
+        loss.backward()
+        self._needs_sync = True
