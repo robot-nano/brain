@@ -102,3 +102,40 @@ class _FP16OptimizerMixin(object):
             loss = self.scaler.scale(loss)
         loss.backward()
         self._needs_sync = True
+
+    def _sync_fp16_grads_to_fp32(self):
+        if self._needs_sync:
+            # copy FP16 grads to FP32
+            if self.has_flat_params:
+                devices = list(self.fp32_params.keys())
+                device_params_dict = defaultdict(list)
+                for p in self.fp16_params:
+                    if p.requires_grad:
+                        device_params_dict[p.device.index].append(p)
+                for device in devices:
+                    device_params = device_params_dict[device]
+                    offset = 0
+                    for p in device_params:
+                        grad_data = (
+                            p.grad.data
+                            if p.grad is not None
+                            else p.data.new_zeros(p.data.shape)
+                        )
+                        numel = grad_data.numel()
+                        self.fp32_params[device].grad.data[
+                            offset : offset + numel
+                        ].copy_(grad_data.view(-1))
+                        offset += numel
+            else:
+                for p, p32 in zip(self.fp16_params, self.fp32_params):
+                    if not p.requires_grad:
+                        continue
+                    if p.grad is not None:
+                        if p32.grad is None:
+                            p32.grad = p.grad.data.float()
+                        else:
+                            p32.grad.data.copy_(p.grad.data)
+                    else:
+                        p32.grad = torch.zeros_like(p.data, dtype=torch.float)
+
+            self._needs_sync = False
