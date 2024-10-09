@@ -163,3 +163,18 @@ class _FP16OptimizerMixin(object):
                 if not p.requires_grad:
                     continue
                 p.data.copy_(p32.data)
+
+    def _unscale_grads(self):
+        self._sync_fp16_grads_to_fp32()
+        if (
+            # Skip the multiplication if it's a no-op (i.e., if _multiply_factor
+            # is 1.0). At the same time, we want to avoid the device-to-host
+            # transfer by comparing it to 1.0. Since _multiply_factor starts as
+            # a Python float, we roughly assume that if it's a tensor then it's
+            # probably not =1.0 anymore and we do the multiplication. Otherwise
+            # we can safely check the value without a D2H transfer.
+            torch.is_tensor(self._multiply_factor)
+            or self._multiply_factor != 1.0
+        ):
+            self.fp32_optimizer.multiply_grads(self._multiply_factor)
+            self._multiply_factor = 1.0
