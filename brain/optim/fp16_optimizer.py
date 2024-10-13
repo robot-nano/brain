@@ -178,3 +178,29 @@ class _FP16OptimizerMixin(object):
         ):
             self.fp32_optimizer.multiply_grads(self._multiply_factor)
             self._multiply_factor = 1.0
+
+    def multiply_grads(self, c):
+        """Multiplies grads by a constant ``c``."""
+        self._multiply_factor *= c
+
+    def clip_grad_norm(self, max_norm, aggregate_norm_fn=None):
+        """Clips gradient norm and updates dynamic loss scaler."""
+        self._sync_fp16_grads_to_fp32()
+
+        grad_norm = self._multiply_factor * self.fp32_optimizer.clip_grad_norm(
+            0, aggregate_norm_fn
+        )
+
+        if torch.is_tensor(self._multiply_factor):
+            self._multiply_factor = self._multiply_factor.to(grad_norm.device)
+
+        if self.scaler is not None:
+            if grad_norm > max_norm > 0.0:
+                self._multiply_factor *= max_norm / grad_norm
+
+            self.scaler.check_overflow(grad_norm)
+        elif max_norm > 0.0:
+            clip_coef = (max_norm / (grad_norm + 1e-6)).clamp_(max=1)
+            self._multiply_factor *= clip_coef
+
+        return grad_norm
