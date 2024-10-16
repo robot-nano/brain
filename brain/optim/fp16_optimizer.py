@@ -204,3 +204,20 @@ class _FP16OptimizerMixin(object):
             self._multiply_factor *= clip_coef
 
         return grad_norm
+
+    def step(self, closure=None, groups=None):
+        """Performs a single optimization step."""
+        self._sync_fp16_grads_to_fp32()
+
+        if getattr(self, "supports_step_with_scale", False):
+            self.fp32_optimizer.step(
+                closure, scale=(1.0 / self._multiply_factor), groups=groups
+            )
+        else:
+            self._unscale_grads()
+            self.fp32_optimizer.step(closure, groups=groups)
+
+        if self.scaler is not None:
+            self.scaler.update()
+
+        self._sync_fp32_params_to_fp16()
