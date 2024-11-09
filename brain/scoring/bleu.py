@@ -88,3 +88,7 @@ class Scorer(object):
             ratio(self.stat.match3, self.stat.count3),
             ratio(self.stat.match4, self.stat.count4),
         ]
+
+    def brevity(self):
+        r = self.stat.reflen / self.stat.predlen
+        return min(1, math.exp(1 - r))
