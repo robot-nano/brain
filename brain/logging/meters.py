@@ -24,3 +24,23 @@ try:
 except ImportError:
     np = None
 
+
+class Meter(object):
+    """Base class for Meters."""
+
+    def __init__(self):
+        pass
+
+    def state_dict(self):
+        return {}
+
+    def load_state_dict(self, state_dict):
+        pass
+
+    def reset(self):
+        raise NotImplementedError
+
+    @property
+    def smoothed_value(self) -> float:
+        """Smoothed value used for logging."""
+        raise NotImplementedError
