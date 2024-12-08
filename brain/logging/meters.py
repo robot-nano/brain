@@ -120,3 +120,55 @@ class SumMeter(Meter):
         if self.round is not None and val is not None:
             val = safe_round(val, self.round)
         return val
+
+class TimeMeter(Meter):
+    """Computes the average occurrence of some event per second"""
+
+    def __init__(
+        self,
+        init: int = 0,
+        n: int = 0,
+        round: Optional[int] = None,
+    ):
+        self.round = round
+        self.reset(init, n)
+
+    def reset(self, init=0, n=0):
+        self.init = init
+        self.start = time.perf_counter()
+        self.n = n
+        self.i = 0
+
+    def update(self, val=1):
+        self.n = type_as(self.n, val) + val
+        self.i += 1
+
+    def state_dict(self):
+        return {
+            "init": self.elapsed_time,
+            "n": self.n,
+            "round": self.round,
+        }
+
+    def load_state_dict(self, state_dict):
+        if "start" in state_dict:
+            # backwards compatibility for old state_dicts
+            self.reset(init=state_dict["init"])
+        else:
+            self.reset(init=state_dict["init"], n=state_dict["n"])
+            self.round = state_dict.get("round", None)
+
+    @property
+    def avg(self):
+        return self.n / self.elapsed_time
+
+    @property
+    def elapsed_time(self):
+        return self.init + (time.perf_counter() - self.start)
+
+    @property
+    def smoothed_value(self) -> float:
+        val = self.avg
+        if self.round is not None and val is not None:
+            val = safe_round(val, self.round)
+        return val
