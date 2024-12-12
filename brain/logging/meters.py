@@ -172,3 +172,75 @@ class TimeMeter(Meter):
         if self.round is not None and val is not None:
             val = safe_round(val, self.round)
         return val
+
+class MetersDict(OrderedDict):
+    """A sorted dictionary of :class:`Meters`.
+
+    Meters are sorted according to a priority that is given when the
+    meter is first added to the dictionary.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.priorities = []
+
+    def __setitem__(self, key, value):
+        assert key not in self, "MetersDict doesn't support reassignment"
+        priority, value = value
+        bisect.insort(self.priorities, (priority, len(self.priorities), key))
+        super().__setitem__(key, value)
+        for _, _, key in self.priorities:  # reorder dict to match priorities
+            self.move_to_end(key)
+
+    def add_meter(self, key, meter, priority):
+        self.__setitem__(key, (priority, meter))
+
+    def state_dict(self):
+        return [
+            (pri, key, self[key].__class__.__name__, self[key].state_dict())
+            for pri, _, key in self.priorities
+            # can't serialize DerivedMeter instances
+            if not isinstance(self[key], MetersDict._DerivedMeter)
+        ]
+
+    def load_state_dict(self, state_dict):
+        self.clear()
+        self.priorities.clear()
+        for pri, key, meter_cls, meter_state in state_dict:
+            meter = globals()[meter_cls]()
+            meter.load_state_dict(meter_state)
+            self.add_meter(key, meter, pri)
+
+    def get_smoothed_value(self, key: str) -> float:
+        """Get a single smoothed value."""
+        meter = self[key]
+        if isinstance(meter, MetersDict._DerivedMeter):
+            return meter.fn(self)
+        else:
+            return meter.smoothed_value
+
+    def get_smoothed_values(self) -> Dict[str, float]:
+        """Get all smoothed values."""
+        return OrderedDict(
+            [
+                (key, self.get_smoothed_value(key))
+                for key in self.keys()
+                if not key.startswith("_")
+            ]
+        )
+
+    def reset(self):
+        """Reset Meter instances."""
+        for meter in self.values():
+            if isinstance(meter, MetersDict._DerivedMeter):
+                continue
+            meter.reset()
+
+    class _DerivedMeter(Meter):
+        """A Meter whose values are derived from other Meters."""
+
+        def __init__(self, fn):
+            self.fn = fn
+
+        def reset(self):
+            pass
