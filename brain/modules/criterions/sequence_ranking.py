@@ -58,3 +58,54 @@ class SentenceRankingCriterion(FairseqCriterion):
         else:
             targets = None
             loss = torch.tensor(0.0, requires_grad=True)
+
+         if self.prediction_h is not None:
+            preds = logits.argmax(dim=1)
+            for i, (id, pred) in enumerate(zip(sample["id"].tolist(), preds.tolist())):
+                if targets is not None:
+                    label = targets[i].item()
+                    print("{}\t{}\t{}".format(id, pred, label), file=self.prediction_h)
+                else:
+                    print("{}\t{}".format(id, pred), file=self.prediction_h)
+
+        logging_output = {
+            "loss": loss.data,
+            "ntokens": sample["ntokens"],
+            "nsentences": sample_size,
+            "sample_size": sample_size,
+        }
+        if targets is not None:
+            logging_output["ncorrect"] = (logits.argmax(dim=1) == targets).sum()
+
+        return loss, sample_size, logging_output
+    
+    @staticmethod
+    def reduce_metrics(logging_outputs) -> None:
+        """Aggregate logging outputs from data parallel training."""
+        loss_sum = sum(log.get("loss", 0) for log in logging_outputs)
+        ntokens = sum(log.get("ntokens", 0) for log in logging_outputs)
+        nsentences = sum(log.get("nsentences", 0) for log in logging_outputs)
+        sample_size = sum(log.get("sample_size", 0) for log in logging_outputs)
+
+        metrics.log_scalar(
+            "loss", loss_sum / sample_size / math.log(2), sample_size, round=3
+        )
+        if sample_size != ntokens:
+            metrics.log_scalar(
+                "nll_loss", loss_sum / ntokens / math.log(2), ntokens, round=3
+            )
+
+        if len(logging_outputs) > 0 and "ncorrect" in logging_outputs[0]:
+            ncorrect = sum(log.get("ncorrect", 0) for log in logging_outputs)
+            metrics.log_scalar(
+                "accuracy", 100.0 * ncorrect / nsentences, nsentences, round=1
+            )
+    
+    @staticmethod
+    def logging_outputs_can_be_summed() -> bool:
+        """
+        Whether the logging outputs returned by `forward` can be summed
+        across workers prior to calling `reduce_metrics`. Setting this
+        to True will improves distributed training speed.
+        """
+        return True
