@@ -252,3 +252,12 @@ class CtcCriterion(FairseqCriterion):
                 if meters["_w_total"].sum > 0
                 else float("nan"),
             )
+
+    @staticmethod
+    def logging_outputs_can_be_summed() -> bool:
+        """
+        Whether the logging outputs returned by `forward` can be summed
+        across workers prior to calling `reduce_metrics`. Setting this
+        to True will improves distributed training speed.
+        """
+        return True
