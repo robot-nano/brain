@@ -120,3 +120,146 @@ class SentencePredictionCriterion(FairseqCriterion):
                 "sample_size": sample_size,
             }
         )
+
+        if not self.regression_target:
+            preds = logits.argmax(dim=1)
+            logging_output["ncorrect"] = (preds == targets).sum()
+        if self.keep_pred_and_targ and not model.training:
+            if self.regression_target:
+                logging_output["pred"] = logits.detach().cpu().tolist()
+                logging_output["targ"] = targets.detach().cpu().tolist()
+            else:
+                # remove offset `self.label_dict.nspecial` from OffsetTokensDataset
+                preds = self.label_dict.string(preds + self.label_dict.nspecial).split()
+                targets = self.label_dict.string(
+                    targets + self.label_dict.nspecial
+                ).split()
+                logging_output["pred"] = list(map(int, preds))
+                logging_output["targ"] = list(map(int, targets))
+
+            if self.report_mcc:
+                logging_output["report_mcc"] = True
+            if self.report_acc_and_f1:
+                logging_output["report_acc_and_f1"] = True
+            if self.report_pearson_and_spearman:
+                logging_output["report_pearson_and_spearman"] = True
+
+        return loss, sample_size, logging_output
+
+    @staticmethod
+    def reduce_metrics(logging_outputs) -> None:
+        """Aggregate logging outputs from data parallel training."""
+        loss_sum = sum(log.get("loss", 0) for log in logging_outputs)
+        ntokens = sum(log.get("ntokens", 0) for log in logging_outputs)
+        nsentences = sum(log.get("nsentences", 0) for log in logging_outputs)
+        sample_size = sum(log.get("sample_size", 0) for log in logging_outputs)
+        mha_reg_loss_sum = sum(log.get("mha_reg_loss", 0) for log in logging_outputs)
+        ffn_reg_loss_sum = sum(log.get("ffn_reg_loss", 0) for log in logging_outputs)
+
+        metrics.log_scalar(
+            "loss", loss_sum / sample_size / math.log(2), sample_size, round=3
+        )
+        if mha_reg_loss_sum:
+            metrics.log_scalar(
+                "mha_reg_loss",
+                mha_reg_loss_sum / sample_size / math.log(2),
+                sample_size,
+                round=3,
+            )
+        if ffn_reg_loss_sum:
+            metrics.log_scalar(
+                "ffn_reg_loss",
+                ffn_reg_loss_sum / sample_size / math.log(2),
+                sample_size,
+                round=3,
+            )
+        if sample_size != ntokens:
+            metrics.log_scalar(
+                "nll_loss", loss_sum / ntokens / math.log(2), ntokens, round=3
+            )
+
+        if len(logging_outputs) > 0 and "ncorrect" in logging_outputs[0]:
+            ncorrect = sum(log.get("ncorrect", 0) for log in logging_outputs)
+            metrics.log_scalar(
+                "accuracy", 100.0 * ncorrect / nsentences, nsentences, round=1
+            )
+
+        # Metrics used by GLUE
+        pred = np.array(
+            list(chain.from_iterable(log.get("pred", []) for log in logging_outputs))
+        )
+        targ = np.array(
+            list(chain.from_iterable(log.get("targ", []) for log in logging_outputs))
+        )
+        if len(pred):
+            metrics.log_concat_tensor("pred", torch.from_numpy(pred), dim=0)
+            metrics.log_concat_tensor("targ", torch.from_numpy(targ), dim=0)
+            if any("report_mcc" in log for log in logging_outputs):
+                metrics.log_derived(
+                    "mcc",
+                    lambda meters: safe_round(
+                        matthews_corrcoef(
+                            meters["pred"].tensor.numpy(),
+                            meters["targ"].tensor.numpy(),
+                        )
+                        * 100,
+                        1,
+                    ),
+                )
+            if any("report_acc_and_f1" in log for log in logging_outputs):
+                metrics.log_derived(
+                    "acc_and_f1",
+                    lambda meters: safe_round(
+                        acc_and_f1(
+                            meters["pred"].tensor.numpy(),
+                            meters["targ"].tensor.numpy(),
+                        )["acc_and_f1"]
+                        * 100,
+                        1,
+                    ),
+                )
+                metrics.log_derived(
+                    "f1",
+                    lambda meters: safe_round(
+                        acc_and_f1(
+                            meters["pred"].tensor.numpy(),
+                            meters["targ"].tensor.numpy(),
+                        )["f1"]
+                        * 100,
+                        1,
+                    ),
+                )
+            if any("report_pearson_and_spearman" in log for log in logging_outputs):
+                metrics.log_derived(
+                    "pearson_and_spearman",
+                    lambda meters: safe_round(
+                        pearson_and_spearman(
+                            meters["pred"].tensor.numpy(),
+                            meters["targ"].tensor.numpy(),
+                        )["corr"]
+                        * 100,
+                        1,
+                    ),
+                )
+                metrics.log_derived(
+                    "pearson",
+                    lambda meters: safe_round(
+                        pearson_and_spearman(
+                            meters["pred"].tensor.numpy(),
+                            meters["targ"].tensor.numpy(),
+                        )["pearson"]
+                        * 100,
+                        1,
+                    ),
+                )
+                metrics.log_derived(
+                    "spearman",
+                    lambda meters: safe_round(
+                        pearson_and_spearman(
+                            meters["pred"].tensor.numpy(),
+                            meters["targ"].tensor.numpy(),
+                        )["spearmanr"]
+                        * 100,
+                        1,
+                    ),
+                )
