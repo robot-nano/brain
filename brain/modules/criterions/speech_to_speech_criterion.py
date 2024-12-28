@@ -47,3 +47,59 @@ class MultitaskCriterion:
         loss = 0.0
         for task_name, task_criterion in self.multitask_criterion.items():
             layer_id = task_criterion.task.args.input_layer
+            if isinstance(task_criterion, CtcCriterion):
+                if task_criterion.task.args.input_from == "encoder":
+                    if len(model_out["encoder_padding_mask"]) > 0:
+                        non_padding_mask = ~model_out["encoder_padding_mask"][0]
+                        input_lengths = non_padding_mask.long().sum(-1)
+                    else:
+                        out = model_out["encoder_states"][layer_id]
+                        input_lengths = out.new_full(
+                            (out.shape[1],), out.shape[0]
+                        ).long()
+
+                    task_sample = {
+                        "net_input": {
+                            "src_tokens": model_out["encoder_states"][
+                                layer_id
+                            ],  # check batch idx
+                            "src_lengths": input_lengths,
+                        },
+                        "id": sample["id"],
+                    }
+                else:
+                    task_sample = {
+                        "net_input": {
+                            "src_tokens": model_out["inner_states"][layer_id],
+                            "src_lengths": sample["target_lengths"],
+                        },
+                        "id": sample["id"],
+                    }
+            else:
+                task_sample = {
+                    "net_input": {
+                        "src_tokens": sample["multitask"][task_name]["net_input"][
+                            "prev_output_tokens"
+                        ],
+                        "encoder_out": {
+                            "encoder_out": [model_out["encoder_states"][layer_id]],
+                            "encoder_padding_mask": model_out["encoder_padding_mask"],
+                        },
+                    }
+                }
+
+            for key in ["target", "target_lengths", "ntokens"]:
+                task_sample[key] = sample["multitask"][task_name][key]
+
+            if task_name == getattr(model, "mt_task_name", None):
+                decoder_out = model_out["mt_decoder_out"]
+            else:
+                decoder_out = None
+            task_loss, task_sample_size, task_logging_output = task_criterion(
+                model.multitask_decoders[task_name], task_sample, net_output=decoder_out
+            )
+
+            loss = loss + self.multitask_loss_weight[task_name] * task_loss
+            task_logging_output["loss_weight"] = self.multitask_loss_weight[task_name]
+            logging_output[task_name] = task_logging_output
+        return loss, logging_output
