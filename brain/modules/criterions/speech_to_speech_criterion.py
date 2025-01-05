@@ -220,3 +220,82 @@ class SpeechToUnitMultitaskTaskCriterion(
             return
 
         MultitaskCriterion.reduce_metrics(logging_outputs)
+
+    @staticmethod
+    def logging_outputs_can_be_summed() -> bool:
+        """
+        Whether the logging outputs returned by `forward` can be summed
+        across workers prior to calling `reduce_metrics`. Setting this
+        to True will improves distributed training speed.
+        """
+        return False
+
+class SpeechToUnit2passMultitaskTaskCriterion(SpeechToUnitMultitaskTaskCriterion):
+    def __init__(
+        self,
+        task,
+        sentence_avg,
+        label_smoothing,
+        ignore_prefix_size=0,
+        report_accuracy=False,
+        rdrop_alpha=0.0,
+    ):
+        super().__init__(
+            task,
+            sentence_avg,
+            label_smoothing,
+            ignore_prefix_size,
+            report_accuracy,
+            rdrop_alpha,
+        )
+
+    def forward(self, model, sample, reduce=True):
+        net_input_concat = {
+            "src_tokens": sample["net_input"]["src_tokens"],
+            "src_lengths": sample["net_input"]["src_lengths"],
+            "prev_output_tokens": sample["net_input"]["prev_output_tokens"],
+            "prev_output_tokens_mt": sample["multitask"][model.mt_task_name][
+                "net_input"
+            ]["prev_output_tokens"],
+            "tgt_speaker": sample["net_input"].get("tgt_speaker", None),
+            "return_all_hiddens": True,
+        }
+        if getattr(model, "asr_task_name", None) is not None:
+            net_input_concat["prev_output_tokens_asr"] = sample["multitask"][
+                model.asr_task_name
+            ]["net_input"]["prev_output_tokens"]
+
+        if self.rdrop_alpha > 0 or self.rdrop_alpha_mtl > 0:
+            net_input_concat = duplicate_input(net_input_concat)
+
+        net_output, extra = model(**net_input_concat)
+        loss, nll_loss, rdrop_kl_loss = self.compute_loss(
+            model, [net_output], sample, reduce=reduce
+        )
+
+        sample_size = (
+            sample["target"].size(0) if self.sentence_avg else sample["ntokens"]
+        )
+        logging_output = {
+            "loss": loss.data,
+            "nll_loss": nll_loss.data,
+            "ntokens": sample["ntokens"],
+            "nsentences": sample["target"].size(0),
+            "sample_size": sample_size,
+        }
+        if self.report_accuracy:
+            n_correct, total = self.compute_accuracy(model, [net_output], sample)
+            logging_output["n_correct"] = utils.item(n_correct.data)
+            logging_output["total"] = utils.item(total.data)
+        if self.rdrop_alpha > 0:
+            logging_output["rdrop_kl_loss"] = utils.item(rdrop_kl_loss.data)
+
+        if len(self.multitask_criterion) == 0:
+            return loss, sample_size, logging_output
+
+        # multitask
+        multitask_loss, multitask_log = self.get_multitask_loss(model, sample, extra)
+        loss += multitask_loss
+        logging_output["multitask"] = multitask_log
+
+        return loss, sample_size, logging_output
