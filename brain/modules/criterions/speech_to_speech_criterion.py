@@ -299,3 +299,103 @@ class SpeechToUnit2passMultitaskTaskCriterion(SpeechToUnitMultitaskTaskCriterion
         logging_output["multitask"] = multitask_log
 
         return loss, sample_size, logging_output
+
+class SpeechToSpectrogramMultitaskTaskCriterion(Tacotron2Criterion, MultitaskCriterion):
+    def __init__(
+        self,
+        task,
+        sentence_avg,
+        use_guided_attention_loss,
+        guided_attention_loss_sigma,
+        bce_pos_weight,
+        ctc_weight,
+    ):
+        super().__init__(
+            task,
+            sentence_avg,
+            use_guided_attention_loss,
+            guided_attention_loss_sigma,
+            bce_pos_weight,
+            ctc_weight,
+        )
+        MultitaskCriterion.__init__(self, task.multitask_tasks)
+
+    def forward(self, model, sample, reduction="mean"):
+        bsz, max_len, _ = sample["target"].size()
+        feat_tgt = sample["target"]
+        feat_len = sample["target_lengths"].view(bsz, 1).expand(-1, max_len)
+        eos_tgt = torch.arange(max_len).to(sample["target"].device)
+        eos_tgt = eos_tgt.view(1, max_len).expand(bsz, -1)
+        eos_tgt = (eos_tgt == (feat_len - 1)).float()
+
+        feat_out, eos_out, extra = model(
+            src_tokens=sample["net_input"]["src_tokens"],
+            src_lengths=sample["net_input"]["src_lengths"],
+            prev_output_tokens=sample["net_input"]["prev_output_tokens"],
+            tgt_speaker=sample["net_input"]["tgt_speaker"],
+            target_lengths=sample["target_lengths"],
+            return_all_hiddens=True,
+        )
+
+        l1_loss, mse_loss, eos_loss = self.compute_loss(
+            extra["feature_out"],
+            feat_out,
+            eos_out,
+            feat_tgt,
+            eos_tgt,
+            sample["target_lengths"],
+            reduction,
+        )
+        attn_loss = torch.tensor(0.0).type_as(l1_loss)
+        if self.guided_attn is not None:
+            attn_loss = self.guided_attn(
+                extra["attn"],
+                sample["net_input"]["src_lengths"],
+                sample["target_lengths"],
+                reduction,
+            )
+        loss = (
+            l1_loss + mse_loss + eos_loss + attn_loss
+        )  # do not include ctc loss as there's no text target
+
+        sample_size = sample["nsentences"] if self.sentence_avg else sample["ntokens"]
+        logging_output = {
+            "loss": utils.item(loss.data),
+            "ntokens": sample["ntokens"],
+            "nsentences": sample["nsentences"],
+            "sample_size": sample_size,
+            "l1_loss": utils.item(l1_loss.data),
+            "mse_loss": utils.item(mse_loss.data),
+            "eos_loss": utils.item(eos_loss.data),
+            "attn_loss": utils.item(attn_loss.data),
+        }
+
+        if len(self.multitask_criterion) == 0:
+            return loss, sample_size, logging_output
+
+        # multitask
+        multitask_loss, multitask_log = self.get_multitask_loss(model, sample, extra)
+        loss += multitask_loss
+        logging_output["multitask"] = multitask_log
+        return loss, sample_size, logging_output
+
+    @classmethod
+    def reduce_metrics(cls, logging_outputs) -> None:
+        super().reduce_metrics(logging_outputs)
+
+        # inference metrics
+        if "targ_frames" in logging_outputs[0]:
+            n = sum(log.get("norm_frames", 0) for log in logging_outputs)
+            for key, new_key in [
+                ("mcd_loss", "mcd_loss"),
+                ("pred_frames", "pred_ratio"),
+                ("nins", "ins_rate"),
+                ("ndel", "del_rate"),
+            ]:
+                val = sum(log.get(key, 0) for log in logging_outputs)
+                metrics.log_scalar(new_key, val / n, n, round=3)
+
+        if "multitask" not in logging_outputs[0]:
+            return
+
+        MultitaskCriterion.reduce_metrics(logging_outputs)
