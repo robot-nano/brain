@@ -145,3 +145,123 @@ class TestEMA(unittest.TestCase):
         with patch.object(ema, "_step_internal", return_value=None) as mock_method:
             ema.step(model, updates=updates)
             mock_method.assert_called_once_with(model, updates)
+
+    def test_ema_before_start_update(self):
+        self._test_ema_start_update(updates=0)
+
+    def test_ema_after_start_update(self):
+        self._test_ema_start_update(updates=1)
+
+    def test_ema_fp32(self):
+        dtype = torch.float
+
+        model = DummyModule().to(dtype)
+        optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+        state = deepcopy(model.state_dict())
+        config = EMAConfig(ema_fp32=True)
+        ema = EMA(model, config)
+
+        x = torch.randn(32)
+        y = model(x.to(dtype))
+        loss = y.sum()
+        loss.backward()
+        optimizer.step()
+
+        ema.step(model)
+
+        for key, param in model.state_dict().items():
+            prev_param = state[key]
+            ema_param = ema.get_model().state_dict()[key]
+
+            if "version" in key:
+                # Do not decay a model.version pytorch param
+                continue
+            self.assertIn(key, ema.fp32_params)
+
+            # EMA update is done in fp32, and hence the EMA param must be
+            # closer to the EMA update done in fp32 than in fp16.
+            self.assertLessEqual(
+                torch.norm(
+                    ema_param.float()
+                    - (
+                        config.ema_decay * prev_param.float()
+                        + (1 - config.ema_decay) * param.float()
+                    )
+                    .to(dtype)
+                    .float()
+                ),
+                torch.norm(
+                    ema_param.float()
+                    - (
+                        config.ema_decay * prev_param + (1 - config.ema_decay) * param
+                    ).float()
+                ),
+            )
+            self.assertTorchAllClose(
+                ema_param,
+                (
+                    config.ema_decay * prev_param.float()
+                    + (1 - config.ema_decay) * param.float()
+                ).to(dtype),
+            )
+
+    @pytest.mark.skipif(
+        not torch.cuda.is_available(),
+        reason="CPU no longer supports Linear in half precision",
+    )
+    def test_ema_fp16(self):
+        model = DummyModule().cuda().half()
+        optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+        state = deepcopy(model.state_dict())
+        config = EMAConfig(ema_fp32=False)
+        ema = EMA(model, config)
+
+        # Since fp32 params is not used, it should be of size 0
+        self.assertEqual(len(ema.fp32_params), 0)
+
+        x = torch.randn(32).cuda()
+        y = model(x.half())
+        loss = y.sum()
+        loss.backward()
+        optimizer.step()
+
+        ema.step(model)
+
+        for key, param in model.state_dict().items():
+            prev_param = state[key]
+            ema_param = ema.get_model().state_dict()[key]
+
+            if "version" in key:
+                # Do not decay a model.version pytorch param
+                continue
+
+            # EMA update is done in fp16, and hence the EMA param must be
+            # closer to the EMA update done in fp16 than in fp32.
+            self.assertLessEqual(
+                torch.norm(
+                    ema_param.float()
+                    - (
+                        config.ema_decay * prev_param + (1 - config.ema_decay) * param
+                    ).float()
+                ),
+                torch.norm(
+                    ema_param.float()
+                    - (
+                        config.ema_decay * prev_param.float()
+                        + (1 - config.ema_decay) * param.float()
+                    )
+                    .half()
+                    .float()
+                ),
+            )
+            self.assertTorchAllClose(
+                ema_param,
+                config.ema_decay * prev_param + (1 - config.ema_decay) * param,
+            )
+
+        # Since fp32 params is not used, it should be of size 0
+        self.assertEqual(len(ema.fp32_params), 0)
+
+
+if __name__ == "__main__":
+    unittest.main()
